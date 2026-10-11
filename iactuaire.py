@@ -512,60 +512,67 @@ with tab_learn:
     if not key_ok:
         st.caption("Pour commencer, renseignez votre clé API dans « Votre accès IA », à gauche.")
 
+    # Emplacements fixes : le suivi en direct et le cours gardent la même place d'une exécution à l'autre,
+    # sinon Streamlit affiche un instant l'ancien et le nouveau bloc (graphiques en double).
+    live = st.container()
+    zone = st.container(key="course_zone")
+
     if go:
         req = CourseRequest(sujet.strip(), objectifs=objectifs.strip(), structure=structure.strip())
         uploaded = [(f.name, f.getvalue()) for f in (files or [])]
         imposed = [u for u in urls.splitlines() if u.strip()]
         failure = None
-        st.caption("Gardez cet onglet ouvert pendant la création du cours.")
-        prog = LivePanel(r)
-        try:
-            res = pipeline.run(req, r, log=prog, imposed_urls=imposed, uploaded=uploaded,
-                               search=not (only and (imposed or uploaded)))
-        except Exception as e:
-            failure = e
-        if failure is not None:   # message lisible, hors du bloc replié
-            if isinstance(failure, llm.MissingAPIKey):
-                st.error(str(failure))
-            else:
-                st.error(f"Le cours n'a pas pu être produit — {type(failure).__name__} : {failure}")
-                with st.expander("Journal"):
-                    st.markdown("\n".join(f"- {l}" for l in prog.lines))
-            st.stop()
-        st.session_state.course = {"res": res, "logs": prog.lines}
-        if not res.pptx_path:
-            st.warning("Aucune source exploitable n'a été trouvée. Élargissez le sujet, baissez la pertinence minimale "
-                       "ou ajoutez des sources autorisées.")
-
-    cur = st.session_state.get("course")
-    if cur and cur["res"].pptx_path:
-        res = cur["res"]
-        st.divider()
-        show_course(res.deck, res.stats, {"pptx": res.pptx_path, "pdf": res.pdf_path, "qa": res.qa_path},
-                    res.retained, res.request.official_docs, res.qa_text, cur["logs"], key="cur",
-                    examined=res.examined)
-    elif not config.LOCAL and not go:
-        # connexion perdue pendant la création : le cours a bien été produit, on le retrouve sur le disque
-        done = sorted(config.OUTPUT_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if done:
+        with live:
+            st.caption("Gardez cet onglet ouvert pendant la création du cours.")
+            prog = LivePanel(r)
             try:
-                last = json.loads(done[0].read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                last = None
-            if last:
-                base = str(done[0])[:-5]
-                st.divider()
-                st.markdown(f'<div class="course-title">{html.escape(last.get("titre", ""))}</div>'
-                            f'<div class="course-sub">{html.escape(last.get("sous_titre", ""))}</div>',
-                            unsafe_allow_html=True)
-                if last.get("stats"):
-                    st.markdown(spec_grid(last["stats"]), unsafe_allow_html=True)
-                downloads([("Télécharger le PowerPoint", base + ".pptx"),
-                           ("Télécharger le polycopié PDF", base + "_polycopie.pdf"),
-                           ("Rapport qualité", base + "_controle_qualite.md")], key="last")
-                st.markdown('<p class="muted">Votre dernier cours, retrouvé après une reconnexion. '
-                            'Tous les cours de cette visite sont aussi dans l\'onglet Bibliothèque.</p>',
-                            unsafe_allow_html=True)
+                res = pipeline.run(req, r, log=prog, imposed_urls=imposed, uploaded=uploaded,
+                                   search=not (only and (imposed or uploaded)))
+            except Exception as e:
+                failure = e
+            if failure is not None:   # message lisible, hors du bloc replié
+                if isinstance(failure, llm.MissingAPIKey):
+                    st.error(str(failure))
+                else:
+                    st.error(f"Le cours n'a pas pu être produit — {type(failure).__name__} : {failure}")
+                    with st.expander("Journal"):
+                        st.markdown("\n".join(f"- {l}" for l in prog.lines))
+                st.stop()
+            st.session_state.course = {"res": res, "logs": prog.lines}
+            if not res.pptx_path:
+                st.warning("Aucune source exploitable n'a été trouvée. Élargissez le sujet, baissez la pertinence "
+                           "minimale ou ajoutez des sources autorisées.")
+
+    with zone:
+        cur = st.session_state.get("course")
+        if cur and cur["res"].pptx_path:
+            res = cur["res"]
+            st.divider()
+            show_course(res.deck, res.stats, {"pptx": res.pptx_path, "pdf": res.pdf_path, "qa": res.qa_path},
+                        res.retained, res.request.official_docs, res.qa_text, cur["logs"], key="cur",
+                        examined=res.examined)
+        elif not config.LOCAL and not go:
+            # connexion perdue pendant la création : le cours a bien été produit, on le retrouve sur le disque
+            done = sorted(config.OUTPUT_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if done:
+                try:
+                    last = json.loads(done[0].read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    last = None
+                if last:
+                    base = str(done[0])[:-5]
+                    st.divider()
+                    st.markdown(f'<div class="course-title">{html.escape(last.get("titre", ""))}</div>'
+                                f'<div class="course-sub">{html.escape(last.get("sous_titre", ""))}</div>',
+                                unsafe_allow_html=True)
+                    if last.get("stats"):
+                        st.markdown(spec_grid(last["stats"]), unsafe_allow_html=True)
+                    downloads([("Télécharger le PowerPoint", base + ".pptx"),
+                               ("Télécharger le polycopié PDF", base + "_polycopie.pdf"),
+                               ("Rapport qualité", base + "_controle_qualite.md")], key="last")
+                    st.markdown('<p class="muted">Votre dernier cours, retrouvé après une reconnexion. '
+                                'Tous les cours de cette visite sont aussi dans l\'onglet Bibliothèque.</p>',
+                                unsafe_allow_html=True)
 
 def _team_tab():
     st.markdown('<p class="muted">Adressez-vous à l\'équipe ou à un expert en particulier : '
