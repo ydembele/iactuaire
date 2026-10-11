@@ -1,0 +1,10 @@
+Personnalisation des cours générés
+==================================
+
+Logo : dépose le logo officiel de ton entreprise ici, sous le nom
+   logo.png         (version couleur, fonds blancs)
+   logo_blanc.png   (version blanche, pour les intercalaires rouges — facultatif)
+
+Couleurs / police : crée un fichier theme.json, par exemple
+   {"auteur": "Youssouf Dembélé", "red": "C21B17", "font": "Arial"}
+Clés disponibles : auteur, red, red_dark, ink, grey, line, panel, soft, font, mono.

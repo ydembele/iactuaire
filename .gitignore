@@ -1,0 +1,10 @@
+# secrets et données locales : ne jamais publier
+.env
+.env.txt
+data/
+templates/theme.json
+templates/logo*.png
+_a_supprimer/
+__pycache__/
+.venv/
+.DS_Store
