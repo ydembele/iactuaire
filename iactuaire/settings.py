@@ -28,6 +28,7 @@ class Reglages:
     seuil_pertinence: int = 6                    # /10
     sources: list = field(default_factory=lambda: ["memoires", "eiopa", "acpr"])
     controle_visuel: bool = True
+    moteur_pdf: str = "quarto"                   # polycopié : « quarto » (Typst) ou « standard » (reportlab)
     auteur: str = ""                             # nom affiché sur la couverture des cours
 
     def officiels(self) -> list[str]:

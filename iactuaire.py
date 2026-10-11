@@ -15,7 +15,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from iactuaire import config, db, llm, pipeline, qa, runtime, settings, synthesis
+from iactuaire import config, db, llm, pipeline, qa, render_quarto, runtime, settings, synthesis
 from iactuaire import theme as theme_mod
 from iactuaire.orchestrator import EXPERTS, PALETTE, ecole_courte, figure, run_turn
 from iactuaire.settings import SOURCES
@@ -89,8 +89,17 @@ h1, h2, h3 { font-family: 'Newsreader', serif !important; font-weight: 500 !impo
 
 # --------------------------------------------------------------------------- session
 # Chaque visiteur a son propre contexte (clé API, modèles, dossier de cours), jamais partagé.
+# En public, l'identifiant du dossier de cours est gardé dans l'adresse (?s=…) : si la connexion se coupe
+# pendant une création (onglet en veille, réseau, redémarrage), la page rechargée retrouve ses cours.
 if type(st.session_state.get("rt")) is not runtime.Runtime:   # nouvelle session (ou ancienne version)
-    out = config.OUTPUT_BASE if config.LOCAL else config.OUTPUT_BASE / "sessions" / uuid.uuid4().hex[:16]
+    if config.LOCAL:
+        out = config.OUTPUT_BASE
+    else:
+        sid = str(st.query_params.get("s", ""))
+        if not re.fullmatch(r"[0-9a-f]{16}", sid) or not (config.OUTPUT_BASE / "sessions" / sid).is_dir():
+            sid = uuid.uuid4().hex[:16]
+        out = config.OUTPUT_BASE / "sessions" / sid
+        st.query_params["s"] = sid
     st.session_state.rt = runtime.Runtime(out_dir=out)
 rt: runtime.Runtime = runtime.activate(st.session_state.rt)
 
@@ -179,6 +188,13 @@ with st.sidebar:
         r.max_slides = st.slider("Slides PowerPoint (maximum)", 10, 100, r.max_slides,
                                  help="Toutes slides comprises : couverture, intercalaires, glossaire, sources.")
         r.max_pages_pdf = st.slider("Pages du polycopié PDF (maximum)", 4, 120, r.max_pages_pdf)
+        moteurs = {"quarto": "Quarto", "standard": "Standard"}
+        r.moteur_pdf = st.radio("Mise en page du polycopié", list(moteurs), format_func=moteurs.get, horizontal=True,
+                                index=list(moteurs).index(r.moteur_pdf if r.moteur_pdf in moteurs else "quarto"),
+                                help="Quarto compose le polycopié avec Typst (modèle modifiable dans templates/quarto/). "
+                                     "Standard : moteur intégré. En cas d'échec de Quarto, Standard prend le relais.")
+        if r.moteur_pdf == "quarto" and not render_quarto.available():
+            st.caption("Quarto n'est pas installé ici : le moteur Standard sera utilisé.")
         r.auteur = st.text_input("Votre nom (couverture)", value=r.auteur or theme_mod.load()["auteur"],
                                  placeholder="facultatif")
 
@@ -329,7 +345,7 @@ def downloads(files: list[tuple[str, str]], key: str):
     for i, (label, path) in enumerate(files):
         if path and Path(path).exists():
             cols[i].download_button(label, Path(path).read_bytes(), file_name=Path(path).name, key=f"{key}{i}",
-                                    type="primary" if i == 0 else "secondary", use_container_width=True)
+                                    type="primary" if i == 0 else "secondary", width="stretch")
 
 
 def cartographie(examined: list, retained: list, key: str):
@@ -361,7 +377,7 @@ def cartographie(examined: list, retained: list, key: str):
             fig.update_layout(font_family="IBM Plex Sans", height=380, margin=dict(l=10, r=10, t=50, b=10))
             if counts is not None and len(counts) and counts.max() <= 10:   # pas de « demi-mémoire »
                 fig.update_xaxes(dtick=1) if k in ("ecole", "meth") else fig.update_yaxes(dtick=1)
-            st.plotly_chart(fig, use_container_width=True, key=f"carto_{key}_{k}")
+            st.plotly_chart(fig, width="stretch", key=f"carto_{key}_{k}")
 
     pert = df.sort_values("Pertinence /10")
     fig = px.bar(pert, x="Pertinence /10", y="Mémoire", color="Retenu", orientation="h", template="plotly_dark",
@@ -370,7 +386,7 @@ def cartographie(examined: list, retained: list, key: str):
     fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="",
                       yaxis=dict(categoryorder="array", categoryarray=list(pert["Mémoire"])))
     fig.update_layout(height=max(320, 26 * len(df) + 120))
-    st.plotly_chart(fig, use_container_width=True, key=f"carto_{key}_pert")
+    st.plotly_chart(fig, width="stretch", key=f"carto_{key}_pert")
 
     c1, c2 = st.columns(2)
     ecoles = df.groupby("École").size().reset_index(name="Mémoires").sort_values("Mémoires", ascending=False)
@@ -411,7 +427,7 @@ def show_course(deck: dict, stats: dict, paths: dict, retained: list, official: 
         if thumbs:
             cols = st.columns(3)
             for i, img in enumerate(thumbs):
-                cols[i % 3].image(img, use_container_width=True)
+                cols[i % 3].image(img, width="stretch")
             st.caption("Les 12 premières slides. Le fichier complet est à télécharger ci-dessus.")
         else:
             st.markdown('<p class="muted">L\'aperçu en images nécessite LibreOffice. Le plan détaillé est dans '
@@ -434,14 +450,14 @@ def show_course(deck: dict, stats: dict, paths: dict, retained: list, official: 
                 "Réf.": m.get("id"), "Titre": (m.get("fiche") or {}).get("titre") or m.get("titre"),
                 "Auteur": (m.get("fiche") or {}).get("auteur"), "Année": (m.get("fiche") or {}).get("annee"),
                 "École": (m.get("fiche") or {}).get("ecole"), "Pertinence /10": m.get("score"), "Lien": m.get("url")}
-                for m in retained]), hide_index=True, use_container_width=True,
+                for m in retained]), hide_index=True, width="stretch",
                 column_config={"Lien": st.column_config.LinkColumn("Lien", display_text="ouvrir")})
         if official:
             st.markdown('<div class="sec">Textes officiels</div>', unsafe_allow_html=True)
             st.dataframe(pd.DataFrame([{
                 "Réf.": d.get("id"), "Éditeur": d.get("editeur"), "Titre": d.get("titre"), "Type": d.get("type"),
                 "Année": d.get("annee"), "Pertinence /10": d.get("score"), "Lien": d.get("url")} for d in official]),
-                hide_index=True, use_container_width=True,
+                hide_index=True, width="stretch",
                 column_config={"Lien": st.column_config.LinkColumn("Lien", display_text="ouvrir")})
     with t_qa:
         st.markdown(qa_text or "Pas de rapport.")
@@ -528,6 +544,28 @@ with tab_learn:
         show_course(res.deck, res.stats, {"pptx": res.pptx_path, "pdf": res.pdf_path, "qa": res.qa_path},
                     res.retained, res.request.official_docs, res.qa_text, cur["logs"], key="cur",
                     examined=res.examined)
+    elif not config.LOCAL and not go:
+        # connexion perdue pendant la création : le cours a bien été produit, on le retrouve sur le disque
+        done = sorted(config.OUTPUT_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if done:
+            try:
+                last = json.loads(done[0].read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                last = None
+            if last:
+                base = str(done[0])[:-5]
+                st.divider()
+                st.markdown(f'<div class="course-title">{html.escape(last.get("titre", ""))}</div>'
+                            f'<div class="course-sub">{html.escape(last.get("sous_titre", ""))}</div>',
+                            unsafe_allow_html=True)
+                if last.get("stats"):
+                    st.markdown(spec_grid(last["stats"]), unsafe_allow_html=True)
+                downloads([("Télécharger le PowerPoint", base + ".pptx"),
+                           ("Télécharger le polycopié PDF", base + "_polycopie.pdf"),
+                           ("Rapport qualité", base + "_controle_qualite.md")], key="last")
+                st.markdown('<p class="muted">Votre dernier cours, retrouvé après une reconnexion. '
+                            'Tous les cours de cette visite sont aussi dans l\'onglet Bibliothèque.</p>',
+                            unsafe_allow_html=True)
 
 def _team_tab():
     st.markdown('<p class="muted">Adressez-vous à l\'équipe ou à un expert en particulier : '
@@ -552,10 +590,10 @@ def _team_tab():
             for i, (titre, fig, df) in enumerate(t.charts + t.carto):
                 if fig is not None:
                     fig.update_layout(font_family="IBM Plex Sans")
-                    st.plotly_chart(fig, use_container_width=True, key=f"tc{k}_{i}")
-                st.dataframe(df, hide_index=True, use_container_width=True)
+                    st.plotly_chart(fig, width="stretch", key=f"tc{k}_{i}")
+                st.dataframe(df, hide_index=True, width="stretch")
             for i, df in enumerate(t.memoires):
-                st.dataframe(df, hide_index=True, use_container_width=True,
+                st.dataframe(df, hide_index=True, width="stretch",
                              column_config={"Lien": st.column_config.LinkColumn("Lien", display_text="ouvrir")})
             if t.course:
                 c = t.course

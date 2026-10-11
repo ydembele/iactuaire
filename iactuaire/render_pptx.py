@@ -200,7 +200,7 @@ class Deck:
         self.text(s, 1.1, 4.7, 7.4, 1.5, self.c.get("sous_titre", ""), 16, "grey", mini=11)
         n = sum(1 for b in self.c.get("bibliographie", []) if b.get("nature", "Mémoire") == "Mémoire")
         byline = [self.t["auteur"], f"{MOIS[date.today().month - 1]} {date.today().year}",
-                  f"cas concrets tirés de {n} mémoires d'actuariat"]
+                  f"cas concrets tirés de {n} mémoires d'actuariat" if n else ""]
         self.text(s, 1.1, 6.5, 7.6, 0.4, "  ·  ".join(b for b in byline if b), 11, "grey", auto=False)
         self.text(s, 9.6, 1.9, 3.2, 0.4, "SOMMAIRE", 12, "red", True, auto=False)
         items = [[(f"{i}  ", {"bold": True, "color": "red"}), (sec["titre"], {})]
@@ -441,6 +441,39 @@ class Deck:
                       align=PP_ALIGN.CENTER, mini=10)
         if sl.get("texte"):
             self.text(s, ML, BODY_Y + h + 0.3, CW, bottom - BODY_Y - h - 0.3, sl["texte"], 16, mini=11)
+
+    # -------- code source (fond sombre, chasse fixe, nom du fichier en bandeau)
+    def s_code(self, s, sl):
+        bottom = self.body_bottom(sl)
+        y = BODY_Y
+        if sl.get("intro"):
+            self.text(s, ML, y, CW, 0.55, sl["intro"], 15, mini=11)
+            y += 0.65
+        com = sl.get("commentaire")
+        cw = CW - 4.0 if com else CW
+        lines = (sl.get("code") or "").replace("\t", "    ").rstrip().splitlines() or [""]
+        head = 0.36 if sl.get("fichier") else 0
+        self.rect(s, ML, y, cw, bottom - y, "dark")
+        if head:
+            self.rect(s, ML, y, cw, head, "red_dark")
+            self.text(s, ML + 0.15, y, cw - 0.3, head, sl["fichier"], 11, "FFFFFF", True, font=self.t["mono"],
+                      anchor=MSO_ANCHOR.MIDDLE, auto=False, space_after=0)
+        box_h = bottom - y - head - 0.2
+        size = 14
+        while size > 8:
+            cpl = max(10, (cw - 0.4) * 72 / (size * 0.6))
+            if sum(max(1, math.ceil(len(l) / cpl)) for l in lines) * size * 1.2 / 72 <= box_h:
+                break
+            size -= 0.5
+        cpl = max(10, (cw - 0.4) * 72 / (size * 0.6))
+        if sum(max(1, math.ceil(len(l) / cpl)) for l in lines) * size * 1.2 / 72 > box_h * 1.05:
+            self.flag("bloc de code trop long pour la slide : le raccourcir")
+        paras = [[(l if l.strip() else " ", {"color": "9FB0B8" if l.lstrip().startswith(("#", "--", "//")) else "EDEAE4"})]
+                 for l in lines]
+        self.text(s, ML + 0.2, y + head + 0.1, cw - 0.4, box_h, paras, size, font=self.t["mono"], auto=False,
+                  space_after=0)
+        if com:
+            self.side_note(s, ML + cw + 0.3, y, CW - cw - 0.3, bottom - y, "À noter", com)
 
     # -------- graphiques natifs (éditables dans PowerPoint)
     def s_graphique(self, s, sl):

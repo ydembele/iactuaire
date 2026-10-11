@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from . import (analyst, config, db, discovery, normalize, official, qa, reader, render_pdf, render_pptx,
+from . import (analyst, config, db, discovery, normalize, official, qa, reader, render_pdf, render_pptx, render_quarto,
                settings, synthesis)
 from .settings import Reglages
 from .synthesis import CourseRequest
@@ -265,13 +265,13 @@ def make_course(res: Result, reglages: Reglages | None = None, log=print, **_ign
             visual = _safe_visual(pptx_path, log)
 
     log("📄 Mise en page du polycopié…")
-    pdf_path, n_pages, level = render_pdf.render_fitted(course, f"{base}_polycopie.pdf", r.max_pages_pdf, log=log)
+    pdf_path, n_pages, level, moteur = render_polycopie(course, f"{base}_polycopie.pdf", r, log)
     n_slides = render_pptx.slide_count(course)
     res.stats.update({"slides": n_slides, "max_slides": r.max_slides, "pages_pdf": n_pages,
-                      "max_pages_pdf": r.max_pages_pdf, "niveau_compaction": level, "corrections": fixed,
+                      "max_pages_pdf": r.max_pages_pdf, "niveau_compaction": level, "moteur_pdf": moteur, "corrections": fixed,
                       "memoires_retenus": len(res.retained), "docs_officiels": len(req.official_docs)})
     budget = [f"- PowerPoint : {n_slides} slides (limite {r.max_slides})",
-              f"- Polycopié : {n_pages} pages (limite {r.max_pages_pdf})"
+              f"- Polycopié ({moteur}) : {n_pages} pages (limite {r.max_pages_pdf})"
               + ("" if n_pages <= r.max_pages_pdf else " — limite non atteignable sans retirer de contenu ; "
                  "réduis le nombre de slides ou augmente la limite de pages"),
               f"- Sources : {len(res.retained)} mémoire(s), {len(req.official_docs)} document(s) officiel(s)"]
@@ -285,6 +285,19 @@ def make_course(res: Result, reglages: Reglages | None = None, log=print, **_ign
         encoding="utf-8")
     log(f"📦 Cours prêt : {n_slides} slides, polycopié de {n_pages} pages, {fixed} correction(s) automatique(s)")
     return res
+
+
+def render_polycopie(course: dict, path: str, r: Reglages, log) -> tuple[str, int, int, str]:
+    """Polycopié avec le moteur choisi ; si Quarto est absent ou échoue, le moteur Standard prend le relais."""
+    if getattr(r, "moteur_pdf", "quarto") == "quarto":
+        if render_quarto.available():
+            try:
+                return (*render_quarto.render_fitted(course, path, r.max_pages_pdf, log=log), "Quarto")
+            except Exception as e:
+                log(f"⚠️ Quarto n'a pas pu composer le polycopié ({str(e)[:160]}) → moteur Standard")
+        else:
+            log("ℹ️ Quarto n'est pas installé → polycopié avec le moteur Standard")
+    return (*render_pdf.render_fitted(course, path, r.max_pages_pdf, log=log), "Standard")
 
 
 def _safe_visual(pptx_path: str, log):

@@ -51,6 +51,18 @@ et l'onglet « Équipe d'experts » (questions libres sur la base de mémoires, 
 En ligne de commande : `python run.py "Marge de risque sous Solvabilité II" --max-slides 30`
 (`python run.py --help` pour toutes les options).
 
+## Polycopié avec Quarto
+
+Le polycopié peut être composé par **Quarto** (moteur Typst) ou par le moteur **Standard** intégré
+(réglage « Mise en page du polycopié »). Les deux donnent la même charte ; si Quarto est absent ou échoue,
+le moteur Standard prend le relais automatiquement.
+
+- Installer Quarto (une fois) : https://quarto.org/docs/get-started/ (ou `brew install --cask quarto`).
+- Chaque cours laisse, à côté du PDF, un dossier `…_polycopie_quarto/` (le `cours.qmd`, ses graphiques
+  et le modèle) : on peut le retoucher et le recompiler avec `quarto render cours.qmd --to typst`.
+- Le modèle est dans `templates/quarto/` : `typst-template.typ` (couverture, en-têtes, titres, encadrés,
+  tableaux) et `iactuaire.lua` (blocs `::: boite`, `::: colonnes`, `::: chiffres`…).
+
 ## Personnaliser
 
 - `templates/consignes_cours.md` : les exigences de fond et de forme appliquées à tous les cours.
@@ -63,6 +75,7 @@ En ligne de commande : `python run.py "Marge de risque sous Solvabilité II" --m
 iactuaire.py        application
 run.py              ligne de commande
 packages.txt        paquets système pour Streamlit Cloud (LibreOffice, polices)
+templates/quarto/   modèle Quarto/Typst du polycopié
 iactuaire/
   runtime.py        contexte propre à chaque visiteur (clé, modèles, dossier) — jamais partagé
   llm.py            accès à Claude ou à OpenAI (texte, recherche web, images, liste des modèles)
@@ -73,7 +86,8 @@ iactuaire/
   official.py       textes officiels EIOPA / ACPR… lus en entier
   synthesis.py      plan et rédaction du cours, réponses aux questions
   render_pptx.py    PowerPoint (graphiques natifs, schémas, glossaire, sources)
-  render_pdf.py     polycopié PDF
+  render_pdf.py     polycopié PDF (moteur Standard) et graphiques du polycopié
+  render_quarto.py  polycopié PDF via Quarto (cours → .qmd → Typst), retour au Standard en cas d'échec
   qa.py             contrôle qualité (chiffres, débordements, rendu visuel)
   orchestrator.py   équipe d'experts (usage local)
   settings.py       réglages de l'utilisateur

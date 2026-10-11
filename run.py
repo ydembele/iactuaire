@@ -29,6 +29,7 @@ ap.add_argument("--max-pages", type=int, default=r.max_pages_pdf)
 ap.add_argument("--min-memoires", type=int, default=r.min_memoires)
 ap.add_argument("--max-memoires", type=int, default=r.max_memoires)
 ap.add_argument("--sources", default=",".join(r.sources), help="ex. memoires,eiopa,acpr")
+ap.add_argument("--moteur-pdf", choices=["quarto", "standard"], default=r.moteur_pdf, help="mise en page du polycopié")
 a = ap.parse_args()
 
 rt = runtime.get()
@@ -36,7 +37,7 @@ rt.provider = a.fournisseur
 d = runtime.DEFAULT_MODELS[a.fournisseur]
 r.modele = a.modele or (r.modele if a.fournisseur == "anthropic" else d["smart"])
 r.modele_lecture = a.modele_lecture or (r.modele_lecture if a.fournisseur == "anthropic" else d["fast"])
-r.max_slides, r.max_pages_pdf = a.max_slides, a.max_pages
+r.max_slides, r.max_pages_pdf, r.moteur_pdf = a.max_slides, a.max_pages, a.moteur_pdf
 r.min_memoires, r.max_memoires = a.min_memoires, a.max_memoires
 r.sources = [s.strip() for s in a.sources.split(",") if s.strip() in settings.SOURCES]
 read = lambda f: Path(f).read_text(encoding="utf-8").strip() if f else ""

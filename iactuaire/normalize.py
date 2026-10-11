@@ -78,6 +78,11 @@ def slide(sl) -> dict:
     elif t == "tableau":
         s["colonnes"] = lst(s.get("colonnes"))
         s["lignes"] = [lst(r) if isinstance(r, (list, tuple)) else [txt(r)] for r in (s.get("lignes") or [])]
+    elif t == "code":
+        for k in ("code", "code_poly"):
+            v = s.get(k)
+            s[k] = "\n".join(str(x) for x in v) if isinstance(v, (list, tuple)) else str(v or "")
+        s["fichier"], s["langage"] = txt(s.get("fichier")), txt(s.get("langage")) or "python"
     if "points" in s or t == "points":
         s["points"] = lst(s.get("points"))
     if "cartes" in s:

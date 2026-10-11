@@ -50,6 +50,89 @@ def _fonts() -> dict:
     return out
 
 
+def chart_drawing(g: dict, t: dict, F: dict, W: float, level: int = 0):
+    """Graphique vectoriel (mêmes données que le PowerPoint), commun aux deux moteurs du polycopié."""
+    RED, INK, GREY, LINE = (colors.HexColor("#" + t[k]) for k in ("red", "ink", "grey", "line"))
+    from reportlab.graphics.charts.barcharts import HorizontalBarChart, VerticalBarChart
+    from reportlab.graphics.charts.legends import Legend
+    from reportlab.graphics.charts.linecharts import HorizontalLineChart
+    from reportlab.graphics.charts.doughnut import Doughnut
+    from reportlab.graphics.shapes import Drawing, String
+    from .render_pptx import _num
+
+    kind = g.get("type", "barres")
+    cats = [str(c) for c in g.get("categories", [])]
+    series = [[_num(v) for v in ser["valeurs"]][:len(cats)] for ser in g["series"]]
+    names = [str(ser.get("nom", "")) for ser in g["series"]]
+    pal = [colors.HexColor("#" + c) for c in (t["red"], t["ink"], t["grey"], t["red_dark"], "E8918D", "BDBDBD")]
+    GH = 7.5 * cm if level == 0 else (6.2 * cm if level < 3 else 5.2 * cm)
+    d = Drawing(W, GH)
+    d.add(String(0, GH - 12, g.get("titre", ""), fontName=F["Body-Bold"], fontSize=10, fillColor=INK))
+    if kind == "anneau":
+        c = Doughnut()
+        c.x, c.y, c.width, c.height = 1 * cm, 0.3 * cm, GH - 1.5 * cm, GH - 1.5 * cm
+        c.data = series[0]
+        total = sum(series[0]) or 1
+        c.labels = [f"{v / total:.0%}" for v in series[0]]
+        c.slices.fontName, c.slices.fontSize = F["Body"], 8
+        for i in range(len(series[0])):
+            c.slices[i].fillColor = pal[i % len(pal)]
+            c.slices[i].strokeColor = colors.white
+        d.add(c)
+        lg = Legend()
+        lg.x, lg.y = GH + 1 * cm, GH - 2 * cm
+        lg.fontName, lg.fontSize = F["Body"], 8.5
+        lg.colorNamePairs = [(pal[i % len(pal)], f"{cats[i]} ({v:g})") for i, v in enumerate(series[0])]
+        d.add(lg)
+        return d
+    if kind == "courbes":
+        c = HorizontalLineChart()
+        c.data = series
+        for i in range(len(series)):
+            c.lines[i].strokeColor = pal[i % len(pal)]
+            c.lines[i].strokeWidth = 1.8
+    else:
+        c = HorizontalBarChart() if kind == "barres_h" else VerticalBarChart()
+        if kind == "cascade":
+            vals, totals = series[0], set(g.get("totaux") or [])
+            base, vis, running = [], [], 0.0
+            for i, v in enumerate(vals):
+                if i in totals:
+                    base.append(0); vis.append(v); running = v
+                else:
+                    base.append(min(running, running + v)); vis.append(abs(v)); running += v
+            c.data = [base, vis]
+            c.categoryAxis.style = "stacked"
+            c.bars[0].fillColor = colors.white
+            c.bars[0].strokeColor = None
+            c.bars[1].strokeColor = None
+            for i, v in enumerate(vals):
+                c.bars[(1, i)].fillColor = INK if i in totals else (RED if v > 0 else GREY)
+            names = []
+        else:
+            c.data = series
+            for i in range(len(series)):
+                c.bars[i].fillColor = pal[i % len(pal)]
+                c.bars[i].strokeColor = None
+    c.x, c.y, c.width, c.height = 1.6 * cm, 1.4 * cm, W - 2.2 * cm, GH - 2.3 * cm
+    c.categoryAxis.categoryNames = cats
+    for ax in (c.categoryAxis, c.valueAxis):
+        ax.labels.fontName, ax.labels.fontSize = F["Body"], 8
+    c.valueAxis.gridStrokeColor = LINE
+    c.valueAxis.visibleGrid = True
+    if kind == "barres_h":
+        c.categoryAxis.labels.boxAnchor = "e"
+    d.add(c)
+    if len(names) > 1:
+        lg = Legend()
+        lg.x, lg.y = 1.6 * cm, 0.4 * cm
+        lg.alignment, lg.columnMaximum = "right", 1
+        lg.fontName, lg.fontSize = F["Body"], 8
+        lg.colorNamePairs = [(pal[i % len(pal)], n) for i, n in enumerate(names)]
+        d.add(lg)
+    return d
+
+
 def _two_sentences(txt: str) -> str:
     parts = re.split(r"(?<=[.!?])\s+", txt or "")
     return " ".join(parts[:2])
@@ -110,86 +193,7 @@ def render(course: dict, path: str, level: int = 0) -> str:
         ]))
         return tb
 
-    def chart(g):
-        """Graphique vectoriel natif du PDF (mêmes données que le PowerPoint)."""
-        from reportlab.graphics.charts.barcharts import HorizontalBarChart, VerticalBarChart
-        from reportlab.graphics.charts.legends import Legend
-        from reportlab.graphics.charts.linecharts import HorizontalLineChart
-        from reportlab.graphics.charts.doughnut import Doughnut
-        from reportlab.graphics.shapes import Drawing, String
-        from .render_pptx import _num
-
-        kind = g.get("type", "barres")
-        cats = [str(c) for c in g.get("categories", [])]
-        series = [[_num(v) for v in ser["valeurs"]][:len(cats)] for ser in g["series"]]
-        names = [str(ser.get("nom", "")) for ser in g["series"]]
-        pal = [colors.HexColor("#" + c) for c in (t["red"], t["ink"], t["grey"], t["red_dark"], "E8918D", "BDBDBD")]
-        GH = 7.5 * cm if level == 0 else (6.2 * cm if level < 3 else 5.2 * cm)
-        d = Drawing(W, GH)
-        d.add(String(0, GH - 12, g.get("titre", ""), fontName=F["Body-Bold"], fontSize=10, fillColor=INK))
-        if kind == "anneau":
-            c = Doughnut()
-            c.x, c.y, c.width, c.height = 1 * cm, 0.3 * cm, GH - 1.5 * cm, GH - 1.5 * cm
-            c.data = series[0]
-            total = sum(series[0]) or 1
-            c.labels = [f"{v / total:.0%}" for v in series[0]]
-            c.slices.fontName, c.slices.fontSize = F["Body"], 8
-            for i in range(len(series[0])):
-                c.slices[i].fillColor = pal[i % len(pal)]
-                c.slices[i].strokeColor = colors.white
-            d.add(c)
-            lg = Legend()
-            lg.x, lg.y = GH + 1 * cm, GH - 2 * cm
-            lg.fontName, lg.fontSize = F["Body"], 8.5
-            lg.colorNamePairs = [(pal[i % len(pal)], f"{cats[i]} ({v:g})") for i, v in enumerate(series[0])]
-            d.add(lg)
-            return d
-        if kind == "courbes":
-            c = HorizontalLineChart()
-            c.data = series
-            for i in range(len(series)):
-                c.lines[i].strokeColor = pal[i % len(pal)]
-                c.lines[i].strokeWidth = 1.8
-        else:
-            c = HorizontalBarChart() if kind == "barres_h" else VerticalBarChart()
-            if kind == "cascade":
-                vals, totals = series[0], set(g.get("totaux") or [])
-                base, vis, running = [], [], 0.0
-                for i, v in enumerate(vals):
-                    if i in totals:
-                        base.append(0); vis.append(v); running = v
-                    else:
-                        base.append(min(running, running + v)); vis.append(abs(v)); running += v
-                c.data = [base, vis]
-                c.categoryAxis.style = "stacked"
-                c.bars[0].fillColor = colors.white
-                c.bars[0].strokeColor = None
-                c.bars[1].strokeColor = None
-                for i, v in enumerate(vals):
-                    c.bars[(1, i)].fillColor = INK if i in totals else (RED if v > 0 else GREY)
-                names = []
-            else:
-                c.data = series
-                for i in range(len(series)):
-                    c.bars[i].fillColor = pal[i % len(pal)]
-                    c.bars[i].strokeColor = None
-        c.x, c.y, c.width, c.height = 1.6 * cm, 1.4 * cm, W - 2.2 * cm, GH - 2.3 * cm
-        c.categoryAxis.categoryNames = cats
-        for ax in (c.categoryAxis, c.valueAxis):
-            ax.labels.fontName, ax.labels.fontSize = F["Body"], 8
-        c.valueAxis.gridStrokeColor = LINE
-        c.valueAxis.visibleGrid = True
-        if kind == "barres_h":
-            c.categoryAxis.labels.boxAnchor = "e"
-        d.add(c)
-        if len(names) > 1:
-            lg = Legend()
-            lg.x, lg.y = 1.6 * cm, 0.4 * cm
-            lg.alignment, lg.columnMaximum = "right", 1
-            lg.fontName, lg.fontSize = F["Body"], 8
-            lg.colorNamePairs = [(pal[i % len(pal)], n) for i, n in enumerate(names)]
-            d.add(lg)
-        return d
+    chart = lambda g: chart_drawing(g, t, F, W, level)
 
     # ------------------------------------------------------------- contenu des slides
     def slide_content(sl):
@@ -246,6 +250,25 @@ def render(course: dict, path: str, level: int = 0) -> str:
                 out.append(P("(graphique non reproduit : données incomplètes)", "small"))
             if sl.get("commentaire"):
                 out += [Spacer(1, 4), B("Lecture —", sl["commentaire"])]
+        elif ty == "code":
+            from reportlab.platypus import Preformatted
+            if sl.get("intro"):
+                out.append(P(sl["intro"]))
+            if sl.get("fichier"):
+                out.append(P("Fichier : " + sl["fichier"], "small"))
+            code = (sl.get("code_poly") or sl.get("code") or "").replace("\t", "    ").rstrip()
+            lines = code.splitlines() or [""]
+            pre = ParagraphStyle("pre", fontName=F["Mono"], fontSize=7.6, leading=9.6, textColor=INK)
+            chunks = [[Preformatted("\n".join(lines[k:k + 40]), pre)] for k in range(0, len(lines), 40)]
+            tb = Table(chunks, colWidths=[W])
+            tb.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), PANEL),
+                                    ("LINEBEFORE", (0, 0), (0, -1), 3, INK),
+                                    ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                                    ("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                                    ("TOPPADDING", (0, 0), (-1, 0), 6), ("BOTTOMPADDING", (0, -1), (-1, -1), 6)]))
+            out.append(tb)
+            if sl.get("commentaire"):
+                out += [Spacer(1, 4), B("À noter —", sl["commentaire"])]
         elif ty == "schema":
             sc = sl.get("schema") or {}
             names = {n["id"]: n.get("titre", n["id"]) for n in sc.get("noeuds", [])}
@@ -302,7 +325,7 @@ def render(course: dict, path: str, level: int = 0) -> str:
                                                                textColor=INK)),
              Spacer(1, 10), P(course.get("sous_titre")), Spacer(1, 3 * cm),
              P(" · ".join(b for b in (t["auteur"], f"{MOIS[date.today().month - 1]} {date.today().year}",
-                                      f"cas concrets tirés de {n} mémoires d'actuariat") if b), "small"),
+                                      f"cas concrets tirés de {n} mémoires d'actuariat" if n else "") if b), "small"),
              NextPageTemplate("page"), PageBreak()]
 
     # Objectifs + sommaire
